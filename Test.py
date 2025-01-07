@@ -190,7 +190,23 @@ print(X.head())  # If X is a DataFrame
 print(X)  # If X is a numpy array
 X = X.dropna()  # For pandas DataFrame
 
+
 scaler = StandardScaler()
+try:
+    X_scaled = scaler.fit_transform(X)  # Scale the data
+    print("Data scaled successfully")
+except Exception as e:
+    print(f"Error during scaling: {e}")
+    exit()
+
+# Predict and handle NaNs in predictions
+y_pred = model.predict(X_scaled)
+y_pred = np.nan_to_num(y_pred, nan=0)  # Replace NaNs with 0
+y_pred_binary = np.round(y_pred).astype(int)  # Round to nearest integer
+
+# Calculate accuracy
+accuracy = accuracy_score(y_test, y_pred_binary)
+print(f"Accuracy: {accuracy}")
 
 try:
     # Assuming X has the appropriate features for scaling
@@ -212,22 +228,33 @@ if np.isnan(y_pred).any():
 else:
     print("y_pred is numeric.")
 
-# Now round the predictions and convert them to integers
-# Round the predictions to binary and convert them to 'Yes'/'No'
-y_pred_binary = np.round(y_pred).astype(int)  # Ensures that predictions are integers (0 or 1)
+# Handle NaN values in y_pred by replacing them with a default value (e.g., 0 or 1)
+y_pred = np.nan_to_num(y_pred, nan=0)  # Replace NaNs with 0 (or another value)
 
-# Map the numeric predictions (0/1) to the actual labels 'No'/'Yes'
+# Round predictions to nearest integer and cast them to integers
+y_pred_binary = np.round(y_pred).astype(int)
+
+# Alternatively, if you want to handle infinities as well, you can replace them with a value:
+y_pred = np.nan_to_num(y_pred, nan=0, posinf=1, neginf=0)  # Replace infinities with 0 or 1 as needed
+y_pred_binary = np.round(y_pred).astype(int)
+
+# Convert the true labels (y_test) to 'Yes'/'No'
+if len(np.unique(y_test)) == 1:
+    print("Warning: y_test contains only one class.")
+    # Map based on the only class present
+    y_true_labels = ['Yes' if np.unique(y_test)[0] == 1 else 'No' for label in y_test]
+else:
+    y_true_labels = ['Yes' if label == 1 else 'No' for label in y_test]
+
+# Convert the predicted labels (y_pred_binary) to 'Yes'/'No'
 y_pred_labels = ['Yes' if pred == 1 else 'No' for pred in y_pred_binary]
-
-# Map the true labels (y_test) to the same format as y_pred_labels ('Yes'/'No')
-y_true_labels = ['Yes' if label == 1 else 'No' for label in y_test]
 
 # Calculate the accuracy
 accuracy = accuracy_score(y_true_labels, y_pred_labels)
 print(f"Accuracy: {accuracy}")
 
 # Confusion Matrix
-conf_matrix = confusion_matrix(y_true_labels, y_pred_labels)
+conf_matrix = confusion_matrix(y_true_labels, y_pred_labels, labels=['No', 'Yes'])
 print("\nConfusion Matrix:")
 print(conf_matrix)
 
@@ -305,12 +332,6 @@ y_test_pred = model.predict(X_test_scaled)
 y_test_pred_binary = np.round(y_test_pred)
 
 # Evaluation
-print("\nTest Set Evaluation:")
-print("Mean Squared Error:", mean_squared_error(y_test, y_test_pred))
-print("R-squared:", r2_score(y_test, y_test_pred))
-print("Accuracy:", accuracy_score(y_test, y_test_pred_binary))
-print("Confusion Matrix:\n", confusion_matrix(y_test, y_test_pred_binary))
-print("Classification Report:\n", classification_report(y_test, y_test_pred_binary))
 print("\nTest Set Evaluation:")
 print("Mean Squared Error:", mean_squared_error(y_test, y_test_pred))
 print("R-squared:", r2_score(y_test, y_test_pred))
