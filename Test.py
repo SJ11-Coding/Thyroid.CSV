@@ -1,81 +1,72 @@
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.preprocessing import LabelEncoder
-from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn import metrics
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, mean_squared_error, r2_score
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.model_selection import KFold
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
 # Load dataset
-# Ensure the file path is correct
 data_path = "C:/Users/jhasa/Downloads/Thyroid_Diff (1).csv"
-
-# Check if file exists
-if not os.path.exists(data_path):
-    raise FileNotFoundError(f"The dataset file was not found at the specified path: {data_path}")
-
-# Data load
 data = pd.read_csv(data_path)
 
-# Check if there are missing values
-if data.isnull().values.any():
-    print("Warning: Dataset contains missing values. These will be dropped.")
-
-# Drop rows with missing values
-data = data.dropna()
-
-# Display basic dataset info
+# Display basic dataset info (EDA)
 print("Dataset head:")
 print(data.head())
 print("\nDataset info:")
-data.info()
+print(data.info())
 
-# Encode categorical columns (assuming some categorical columns are present)
+# Encode categorical columns
 categorical_cols = ['Gender', 'Thyroid Function', 'Pathology', 'Focality', 'Risk', 'Stage', 'Response']
 for col in categorical_cols:
     if col in data.columns:
         le = LabelEncoder()
         data[col] = le.fit_transform(data[col].astype(str))
 
-# One-hot encode 'T', 'N', 'M' columns if they exist
-if all(col in data.columns for col in ['T', 'N', 'M']):
-    data = pd.get_dummies(data, columns=['T', 'N', 'M'], drop_first=True)
-
 # Separate features and target
 X = data.drop(columns=['Recurred'])
 y = data['Recurred']
 
-# Convert all feature columns to numeric where possible (while keeping categorical columns as is)
+# Check for missing values in features before dropping them
+print("Missing values in each column:\n", X.isnull().sum())
+
+# Convert all feature columns to numeric where possible
 for col in X.columns:
-    if X[col].dtype == 'object':  # Handle categorical columns
+    if X[col].dtype == 'object':
         X[col] = LabelEncoder().fit_transform(X[col])
 
-# Ensure that X contains only numeric values before scaling
-print("Data types of X before scaling:")
-print(X.dtypes)
+# Check the shape of X after preprocessing
+print("Shape of X after preprocessing:", X.shape)
 
 # Drop rows with any NaN values in features or target after conversion
 X = X.dropna()
 y = y.dropna()
 
-# Ensure X isn't empty
+# Ensure X isn't empty after dropping rows with missing values
 if X.empty:
     raise ValueError("The feature set X is empty after preprocessing. Please check the data.")
 
+# Check the data types of columns after encoding
+print("Data types of columns:\n", X.dtypes)
+
 # Standardize the features
 scaler = StandardScaler()
-X = scaler.fit_transform(X)
+X_scaled = scaler.fit_transform(X)
 
-# --- Cross-validation setup --- #
+# Now check if X_scaled is empty after scaling
+if X_scaled.size == 0:
+    raise ValueError("The feature set X is empty after scaling. Please check the data.")
 
+# Cross-validation setup
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
 model = LogisticRegression()
 
@@ -83,11 +74,11 @@ model = LogisticRegression()
 accuracies = []
 
 # Perform cross-validation
-for fold, (train_idx, test_idx) in enumerate(kf.split(X), start=1):
+for fold, (train_idx, test_idx) in enumerate(kf.split(X_scaled), start=1):
     print(f"\nTraining fold {fold}...")
 
     # Split the data
-    X_train, X_test = X[train_idx], X[test_idx]
+    X_train, X_test = X_scaled[train_idx], X_scaled[test_idx]
     y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
     # Train the model
@@ -107,20 +98,13 @@ print("Highest value in Age:", data['Age'].max())
 print("Smallest value in Age:", data['Age'].min())
 
 # Binning Age
-# --- Bar Graphs --- #
-
-# 1. Plot Age Group Distribution
 bins = [15, 20, 30, 40, 50, 60, 70, 80, 90]
-labels = ['15-20', '20-30', '31-40', '41-50', '51-60', '61-70', '71-80', '81-90']
+labels = ['15-20', '20-30', '30-40', '40-50', '50-60', '60-70', '70-80', '80-90']
 data['Age_Group'] = pd.cut(data['Age'], bins=bins, labels=labels)
 
 # Plot Age Group Distribution
 age_group_counts = data['Age_Group'].value_counts().sort_index()
-
-# Plot the Age Group distribution bar graph
 age_group_counts.plot(kind='bar', color=('lightblue', '#ffd238'), edgecolor='black')
-
-# Customize the plot
 plt.title('Count of People in Each Age Group')
 plt.xlabel('Age Group')
 plt.ylabel('Count')
@@ -131,11 +115,7 @@ plt.show()
 
 # Plot Gender Distribution
 gender_counts = data['Gender'].value_counts()
-
-# 2. Plot Gender Distribution
 gender_counts.plot(kind='bar', color=['#ff799f', '#76b5f8'], edgecolor='black')
-
-# Customize the plot
 plt.title('Count of Males and Females')
 plt.xlabel('Gender')
 plt.ylabel('Count')
@@ -155,81 +135,185 @@ print("Converted binary columns:")
 print(data[[column + '_numeric' for column in binary_columns]].head())
 
 # Plot Thyroid Function Distribution
-# 3. Plot Thyroid Function Distribution
 thyroid_function_counts = data['Thyroid Function'].value_counts().sort_index()
-
-# Plot Thyroid Function distribution bar graph
 thyroid_function_counts.plot(kind='bar', color=('#1a267b', '#ffd03c'), edgecolor='white')
-
-# Rotate x-axis labels to avoid overlap
-plt.xticks(rotation=45, ha='right')  # Rotate labels by 45 degrees and adjust alignment
+plt.xticks(rotation=45, ha='right')
 plt.title('Thyroid Function Distribution')
 plt.tight_layout()
 plt.show()
 
-# EDA
-# Data load
-data = pd.read_csv(data_path)
-
-# Display basic information
-print("Dataset head:")
-print(data.head())
-print("\nDataset info:")
-data.info()
-
-# --- 1. Check for missing values ---
-missing_values = data.isnull().sum()
-print(f"\nMissing Values:\n{missing_values}")
-
-# --- 2. Summary Statistics ---
+# --- 1. Summary Statistics ---
 print("\nSummary Statistics:")
 print(data.describe())
 
-# --- 3. Distribution of Numerical Features ---
-# We will focus on numerical features such as Age
-print("\nDistribution of 'Age' feature:")
-age_min = data['Age'].min()
-age_max = data['Age'].max()
-age_mean = data['Age'].mean()
-age_std = data['Age'].std()
-print(f"Min: {age_min}, Max: {age_max}, Mean: {age_mean:.2f}, Standard Deviation: {age_std:.2f}")
+# --- 2. Categorical Data Distribution ---
+print("\nFemale/Male Count:")
+print(data['Gender'].value_counts())
 
-# --- 4. Categorical Data Distribution ---
-# Gender distribution
-print("\nGender Distribution:")
-gender_counts = data['Gender'].value_counts()
-print(gender_counts)
-
-# Thyroid Function distribution
 print("\nThyroid Function Distribution:")
-thyroid_function_counts = data['Thyroid Function'].value_counts()
-print(thyroid_function_counts)
+print(data['Thyroid Function'].value_counts())
 
-# --- 5. Correlation Matrix ---
-# Only select numeric columns for correlation calculation
+# --- 3. Correlation Matrix ---
 numeric_data = data.select_dtypes(include=[np.number])
-
-# Compute correlation matrix
 correlation = numeric_data.corr()
 print("\nCorrelation Matrix:")
 print(correlation)
 
-# --- 6. Outliers Detection ---
-# Check for outliers in Age using a basic range method (min, max, 1.5*IQR rule)
-q1 = data['Age'].quantile(0.25)
-q3 = data['Age'].quantile(0.75)
-iqr = q3 - q1
-lower_bound = q1 - 1.5 * iqr
-upper_bound = q3 + 1.5 * iqr
-print("\nOutliers Detection for Age:")
-print(f"Lower Bound: {lower_bound}, Upper Bound: {upper_bound}")
-
-# Detect outliers
-age_outliers = data[(data['Age'] < lower_bound) | (data['Age'] > upper_bound)]
-print(f"Number of outliers in Age: {len(age_outliers)}")
-
-# --- 7. Target Variable Distribution ---
-# Distribution of the target variable 'Recurred'
-print("\nRecurred Distribution:")
+# --- 4. Target Variable Distribution ---
 recurred_counts = data['Recurred'].value_counts()
+print("\nRecurrence:")
 print(recurred_counts)
+recurred_counts.plot(kind='bar', color=['#34a5cf', '#ffdf40'], edgecolor='black')
+plt.title('Recurred Distribution')
+plt.xlabel('Recurrence')
+plt.ylabel('Count')
+plt.xticks(rotation=0)
+plt.show()
+
+# Decision Tree
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+clf = DecisionTreeClassifier(random_state=42)
+clf.fit(X_train, y_train)
+y_pred = clf.predict(X_test)
+accuracy = metrics.accuracy_score(y_test, y_pred)
+print("Decision Tree Accuracy:", accuracy)
+
+# Random Forest
+y = data['Recurred'].map({'No': 0, 'Yes': 1})
+X = data.drop(columns=['Recurred'])
+X = X.apply(pd.to_numeric, errors='coerce')
+X = X.dropna()
+y = data['Recurred'].dropna()
+
+print(X.shape)  # Check the shape of X
+print(X.head())  # If X is a DataFrame
+print(X)  # If X is a numpy array
+X = X.dropna()  # For pandas DataFrame
+
+scaler = StandardScaler()
+
+try:
+    # Assuming X has the appropriate features for scaling
+    X_scaled = scaler.fit_transform(X)  # Scale the data
+    print("\nData scaled successfully")
+except Exception as e:
+    print(f"Error during scaling: {e}")
+
+# Convert y_pred to numeric, handling non-numeric values (coerce turns invalid values to NaN)
+try:
+    y_pred = pd.to_numeric(y_pred, errors='coerce')  # This ensures y_pred is numeric
+except Exception as e:
+    print(f"Error converting y_pred to numeric: {e}")
+    exit()
+
+# Check for any NaN values after conversion
+if np.isnan(y_pred).any():
+    print("Warning: y_pred contains NaN values after conversion.")
+else:
+    print("y_pred is numeric.")
+
+# Now round the predictions and convert them to integers
+# Round the predictions to binary and convert them to 'Yes'/'No'
+y_pred_binary = np.round(y_pred).astype(int)  # Ensures that predictions are integers (0 or 1)
+
+# Map the numeric predictions (0/1) to the actual labels 'No'/'Yes'
+y_pred_labels = ['Yes' if pred == 1 else 'No' for pred in y_pred_binary]
+
+# Map the true labels (y_test) to the same format as y_pred_labels ('Yes'/'No')
+y_true_labels = ['Yes' if label == 1 else 'No' for label in y_test]
+
+# Calculate the accuracy
+accuracy = accuracy_score(y_true_labels, y_pred_labels)
+print(f"Accuracy: {accuracy}")
+
+# Confusion Matrix
+conf_matrix = confusion_matrix(y_true_labels, y_pred_labels)
+print("\nConfusion Matrix:")
+print(conf_matrix)
+
+# Classification Report
+class_report = classification_report(y_true_labels, y_pred_labels)
+print("\nClassification Report:")
+print(class_report)
+
+# Final evaluations after cross-validation
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
+mse_scores, r2_scores, accuracies = [], [], []
+
+# Separate features and target
+X = data.drop(columns=['Recurred'])
+y = data['Recurred']
+
+# Convert all feature columns to numeric where possible
+for col in X.columns:
+    if X[col].dtype == 'object':
+        X[col] = LabelEncoder().fit_transform(X[col])
+
+# Drop rows with any NaN values in features or target after conversion
+X = X.dropna()
+y = y.dropna()
+
+# Ensure X isn't empty after dropping rows with missing values
+if X.empty:
+    raise ValueError("The feature set X is empty after preprocessing. Please check the data.")
+# Ensure the target variable (y) is numeric
+y = data['Recurred'].map({'No': 0, 'Yes': 1}).fillna(0).astype(int)  # Map 'Yes'/'No' to 1/0
+
+# Cross-validation and model evaluation
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
+mse_scores, r2_scores, accuracies = [], [], []
+
+for train_idx, test_idx in kf.split(X_scaled):
+    # Split into train and test sets for this fold
+    X_fold_train, X_fold_test = X_scaled[train_idx], X_scaled[test_idx]
+    y_fold_train, y_fold_test = y.iloc[train_idx], y.iloc[test_idx]
+
+    # Train the model
+    model.fit(X_fold_train, y_fold_train)
+
+    # Predict on the test set
+    y_fold_pred = model.predict(X_fold_test)
+
+    # Ensure predictions are numeric and binary
+    y_fold_pred = np.round(y_fold_pred).astype(int)
+
+    # Append scores for this fold
+    mse_scores.append(mean_squared_error(y_fold_test, y_fold_pred))
+    r2_scores.append(r2_score(y_fold_test, y_fold_pred))
+    accuracies.append(accuracy_score(y_fold_test, y_fold_pred))
+
+# Final evaluation metrics
+print("\nCross-validation results:")
+print(f"Mean Squared Errors: {mse_scores}")
+print(f"R-squared Scores: {r2_scores}")
+print(f"Accuracies: {accuracies}")
+
+# Split the data
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+# Ensure test data is scaled correctly
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Train the model on the scaled training set
+model.fit(X_train_scaled, y_train)
+
+# Predict on the scaled test set
+y_test_pred = model.predict(X_test_scaled)
+
+# Convert predictions to binary labels if necessary
+y_test_pred_binary = np.round(y_test_pred)
+
+# Evaluation
+print("\nTest Set Evaluation:")
+print("Mean Squared Error:", mean_squared_error(y_test, y_test_pred))
+print("R-squared:", r2_score(y_test, y_test_pred))
+print("Accuracy:", accuracy_score(y_test, y_test_pred_binary))
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_test_pred_binary))
+print("Classification Report:\n", classification_report(y_test, y_test_pred_binary))
+print("\nTest Set Evaluation:")
+print("Mean Squared Error:", mean_squared_error(y_test, y_test_pred))
+print("R-squared:", r2_score(y_test, y_test_pred))
+print("Accuracy:", accuracy_score(y_test, y_test_pred_binary))
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_test_pred_binary))
+print("Classification Report:\n", classification_report(y_test, y_test_pred_binary))
