@@ -1,19 +1,19 @@
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import KFold, train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn import metrics
+from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, confusion_matrix, classification_report
+from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import DecisionTreeClassifier, plot_tree
-from sklearn.model_selection import train_test_split, KFold
-from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import StandardScaler
-from sklearn import metrics
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, mean_squared_error, r2_score
-from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LinearRegression
-from sklearn.linear_model import LogisticRegression
 import matplotlib.pyplot as plt
-import seaborn as sns
-import os
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.metrics import roc_auc_score
 
 # Load dataset
 data_path = "C:/Users/jhasa/Downloads/Thyroid_Diff (1).csv"
@@ -36,35 +36,64 @@ for col in categorical_cols:
 X = data.drop(columns=['Recurred'])
 y = data['Recurred']
 
-# Check for missing values in features before dropping them
-print("Missing values in each column:\n", X.isnull().sum())
+# Separate numeric and categorical columns
+numeric_cols = X.select_dtypes(include=['float64', 'int64']).columns
+categorical_cols = X.select_dtypes(include=['object', 'category']).columns
 
-# Convert all feature columns to numeric where possible
-for col in X.columns:
-    if X[col].dtype == 'object':
-        X[col] = LabelEncoder().fit_transform(X[col])
+# Handle missing values using SimpleImputer (fill with median for numeric, most_frequent for categorical)
+numeric_imputer = SimpleImputer(strategy='median')
+categorical_imputer = SimpleImputer(strategy='most_frequent')
 
-# Check the shape of X after preprocessing
-print("Shape of X after preprocessing:", X.shape)
+# Apply imputers
+X[numeric_cols] = numeric_imputer.fit_transform(X[numeric_cols])
+X[categorical_cols] = categorical_imputer.fit_transform(X[categorical_cols])
 
-# Drop rows with any NaN values in features or target after conversion
-X = X.dropna()
-y = y.dropna()
-
-# Ensure X isn't empty after dropping rows with missing values
+# Check if X is still empty
 if X.empty:
-    raise ValueError("The feature set X is empty after preprocessing. Please check the data.")
+    raise ValueError("The feature set X is empty after imputation. Please check the data.")
 
-# Check the data types of columns after encoding
-print("Data types of columns:\n", X.dtypes)
+# Ensure the target variable (y) is numeric
+y = y.map({'No': 0, 'Yes': 1})
 
-# Standardize the features
+# Separate numeric and categorical columns
+numeric_cols = X.select_dtypes(include=['float64', 'int64']).columns.tolist()
+categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+
+# Handle missing values using SimpleImputer
+numeric_imputer = SimpleImputer(strategy='median')
+categorical_imputer = SimpleImputer(strategy='most_frequent')
+
+# Apply imputers
+if numeric_cols:  # Check if there are numeric columns
+    X[numeric_cols] = numeric_imputer.fit_transform(X[numeric_cols])
+
+if categorical_cols:  # Check if there are categorical columns
+    X[categorical_cols] = categorical_imputer.fit_transform(X[categorical_cols])
+
+# Encode categorical columns (Label Encoding or OneHotEncoding)
+if categorical_cols:
+    for col in categorical_cols:
+        le = LabelEncoder()
+        X[col] = le.fit_transform(X[col].astype(str))
+
+# Convert all data in X to numeric
+X = X.apply(pd.to_numeric, errors='coerce')
+
+# Check if any non-numeric values remain
+if X.isnull().values.any():
+    print("Warning: Missing or non-numeric data found after preprocessing!")
+    print(X.isnull().sum())
+
+# Drop any rows with NaN values (optional, depending on your approach)
+X = X.dropna()
+
+# Scale the data
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-# Now check if X_scaled is empty after scaling
-if X_scaled.size == 0:
-    raise ValueError("The feature set X is empty after scaling. Please check the data.")
+print("Shape of X after preprocessing:", X.shape)
+print("First few rows of X:\n", X.head())
+
 
 # Cross-validation setup
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
@@ -93,6 +122,33 @@ for fold, (train_idx, test_idx) in enumerate(kf.split(X_scaled), start=1):
 # Print when all folds have been completed
 print("\nAll folds completed!")
 
+# --- 1. Summary Statistics ---
+print("\nSummary Statistics:")
+print(data.describe())
+
+# --- 2. Categorical Data Distribution ---
+print("\nFemale/Male Count:")
+print(data['Gender'].value_counts())
+
+print("\nThyroid Function Distribution:")
+print(data['Thyroid Function'].value_counts())
+
+# --- 3. Correlation Matrix ---
+numeric_data = data.select_dtypes(include=[np.number])
+correlation = numeric_data.corr()
+print("\nCorrelation Matrix:")
+print(correlation)
+
+# --- 4. Target Variable Distribution ---
+recurred_counts = data['Recurred'].value_counts()
+print("\nRecurrence:")
+print(recurred_counts)
+recurred_counts.plot(kind='bar', color=['#34a5cf', '#ffdf40'], edgecolor='black')
+plt.title('Recurred Distribution')
+plt.xlabel('Recurrence')
+plt.ylabel('Count')
+plt.xticks(rotation=0)
+plt.show()
 # Analyze Age
 print("Highest value in Age:", data['Age'].max())
 print("Smallest value in Age:", data['Age'].min())
@@ -141,35 +197,6 @@ plt.xticks(rotation=45, ha='right')
 plt.title('Thyroid Function Distribution')
 plt.tight_layout()
 plt.show()
-
-# --- 1. Summary Statistics ---
-print("\nSummary Statistics:")
-print(data.describe())
-
-# --- 2. Categorical Data Distribution ---
-print("\nFemale/Male Count:")
-print(data['Gender'].value_counts())
-
-print("\nThyroid Function Distribution:")
-print(data['Thyroid Function'].value_counts())
-
-# --- 3. Correlation Matrix ---
-numeric_data = data.select_dtypes(include=[np.number])
-correlation = numeric_data.corr()
-print("\nCorrelation Matrix:")
-print(correlation)
-
-# --- 4. Target Variable Distribution ---
-recurred_counts = data['Recurred'].value_counts()
-print("\nRecurrence:")
-print(recurred_counts)
-recurred_counts.plot(kind='bar', color=['#34a5cf', '#ffdf40'], edgecolor='black')
-plt.title('Recurred Distribution')
-plt.xlabel('Recurrence')
-plt.ylabel('Count')
-plt.xticks(rotation=0)
-plt.show()
-
 # Decision Tree
 X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
 clf = DecisionTreeClassifier(random_state=42)
@@ -189,134 +216,14 @@ print(X.shape)  # Check the shape of X
 print(X.head())  # If X is a DataFrame
 print(X)  # If X is a numpy array
 X = X.dropna()  # For pandas DataFrame
-
-
-scaler = StandardScaler()
-try:
-    X_scaled = scaler.fit_transform(X)  # Scale the data
-    print("Data scaled successfully")
-except Exception as e:
-    print(f"Error during scaling: {e}")
-    exit()
-
-# Predict and handle NaNs in predictions
-y_pred = model.predict(X_scaled)
-y_pred = np.nan_to_num(y_pred, nan=0)  # Replace NaNs with 0
-y_pred_binary = np.round(y_pred).astype(int)  # Round to nearest integer
-
-# Calculate accuracy
-accuracy = accuracy_score(y_test, y_pred_binary)
-print(f"Accuracy: {accuracy}")
-
-try:
-    # Assuming X has the appropriate features for scaling
-    X_scaled = scaler.fit_transform(X)  # Scale the data
-    print("\nData scaled successfully")
-except Exception as e:
-    print(f"Error during scaling: {e}")
-
-# Convert y_pred to numeric, handling non-numeric values (coerce turns invalid values to NaN)
-try:
-    y_pred = pd.to_numeric(y_pred, errors='coerce')  # This ensures y_pred is numeric
-except Exception as e:
-    print(f"Error converting y_pred to numeric: {e}")
-    exit()
-
-# Check for any NaN values after conversion
-if np.isnan(y_pred).any():
-    print("Warning: y_pred contains NaN values after conversion.")
-else:
-    print("y_pred is numeric.")
-
-# Handle NaN values in y_pred by replacing them with a default value (e.g., 0 or 1)
-y_pred = np.nan_to_num(y_pred, nan=0)  # Replace NaNs with 0 (or another value)
-
-# Round predictions to nearest integer and cast them to integers
-y_pred_binary = np.round(y_pred).astype(int)
-
-# Alternatively, if you want to handle infinities as well, you can replace them with a value:
-y_pred = np.nan_to_num(y_pred, nan=0, posinf=1, neginf=0)  # Replace infinities with 0 or 1 as needed
-y_pred_binary = np.round(y_pred).astype(int)
-
-# Convert the true labels (y_test) to 'Yes'/'No'
-if len(np.unique(y_test)) == 1:
-    print("Warning: y_test contains only one class.")
-    # Map based on the only class present
-    y_true_labels = ['Yes' if np.unique(y_test)[0] == 1 else 'No' for label in y_test]
-else:
-    y_true_labels = ['Yes' if label == 1 else 'No' for label in y_test]
-
-# Convert the predicted labels (y_pred_binary) to 'Yes'/'No'
-y_pred_labels = ['Yes' if pred == 1 else 'No' for pred in y_pred_binary]
-
-# Calculate the accuracy
-accuracy = accuracy_score(y_true_labels, y_pred_labels)
-print(f"Accuracy: {accuracy}")
-
-# Confusion Matrix
-conf_matrix = confusion_matrix(y_true_labels, y_pred_labels, labels=['No', 'Yes'])
-print("\nConfusion Matrix:")
-print(conf_matrix)
-
-# Classification Report
-class_report = classification_report(y_true_labels, y_pred_labels)
-print("\nClassification Report:")
-print(class_report)
-
-# Final evaluations after cross-validation
-kf = KFold(n_splits=5, shuffle=True, random_state=42)
-mse_scores, r2_scores, accuracies = [], [], []
-
-# Separate features and target
-X = data.drop(columns=['Recurred'])
-y = data['Recurred']
-
-# Convert all feature columns to numeric where possible
-for col in X.columns:
-    if X[col].dtype == 'object':
-        X[col] = LabelEncoder().fit_transform(X[col])
-
-# Drop rows with any NaN values in features or target after conversion
-X = X.dropna()
-y = y.dropna()
-
-# Ensure X isn't empty after dropping rows with missing values
-if X.empty:
-    raise ValueError("The feature set X is empty after preprocessing. Please check the data.")
-# Ensure the target variable (y) is numeric
-y = data['Recurred'].map({'No': 0, 'Yes': 1}).fillna(0).astype(int)  # Map 'Yes'/'No' to 1/0
-
-# Cross-validation and model evaluation
-kf = KFold(n_splits=5, shuffle=True, random_state=42)
-mse_scores, r2_scores, accuracies = [], [], []
-
-for train_idx, test_idx in kf.split(X_scaled):
-    # Split into train and test sets for this fold
-    X_fold_train, X_fold_test = X_scaled[train_idx], X_scaled[test_idx]
-    y_fold_train, y_fold_test = y.iloc[train_idx], y.iloc[test_idx]
-
-    # Train the model
-    model.fit(X_fold_train, y_fold_train)
-
-    # Predict on the test set
-    y_fold_pred = model.predict(X_fold_test)
-
-    # Ensure predictions are numeric and binary
-    y_fold_pred = np.round(y_fold_pred).astype(int)
-
-    # Append scores for this fold
-    mse_scores.append(mean_squared_error(y_fold_test, y_fold_pred))
-    r2_scores.append(r2_score(y_fold_test, y_fold_pred))
-    accuracies.append(accuracy_score(y_fold_test, y_fold_pred))
-
-# Final evaluation metrics
-print("\nCross-validation results:")
-print(f"Mean Squared Errors: {mse_scores}")
-print(f"R-squared Scores: {r2_scores}")
-print(f"Accuracies: {accuracies}")
-
-# Split the data
+# Split the data into training and testing sets
 X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+print("Shape of X_train:", X_train.shape)
+print("Shape of X_test:", X_test.shape)
+
+# Ensure train and test sets are not empty
+if X_train.shape[0] == 0 or X_test.shape[0] == 0:
+    raise ValueError("Train or test set is empty. Please check data splitting!")
 
 # Ensure test data is scaled correctly
 X_train_scaled = scaler.fit_transform(X_train)
@@ -328,13 +235,115 @@ model.fit(X_train_scaled, y_train)
 # Predict on the scaled test set
 y_test_pred = model.predict(X_test_scaled)
 
-# Convert predictions to binary labels if necessary
-y_test_pred_binary = np.round(y_test_pred)
+# Ensure y_test_pred is numerical and convert to binary labels
+if isinstance(y_test_pred[0], str):
+    # In case predictions are strings, make sure they are numerical
+    y_test_pred = np.array([0 if val == 'No' else 1 for val in y_test_pred])
 
-# Evaluation
+# Ensure y_test is numeric (0 or 1)
+y_test = y_test.map({'No': 0, 'Yes': 1})
+
+# Ensure y_test_pred_binary is numeric (0 or 1)
+y_test_pred_binary = np.round(y_test_pred).astype(int)
+
+# Classification Evaluation
 print("\nTest Set Evaluation:")
-print("Mean Squared Error:", mean_squared_error(y_test, y_test_pred))
-print("R-squared:", r2_score(y_test, y_test_pred))
 print("Accuracy:", accuracy_score(y_test, y_test_pred_binary))
 print("Confusion Matrix:\n", confusion_matrix(y_test, y_test_pred_binary))
 print("Classification Report:\n", classification_report(y_test, y_test_pred_binary))
+
+
+# Testing all Folds
+
+# Define the top three risk factors based on domain knowledge
+top_three_features = ['Age', 'Risk', 'T']  # Replace with actual top 3 features from your analysis
+
+# Define target variable
+target_column = 'Recurred'
+
+# Split data for the two feature sets
+X_top_three = data[top_three_features]
+X_all = data.drop(columns=[target_column])
+
+# Ensure target variable is numeric
+y = data[target_column].map({'No': 0, 'Yes': 1})
+
+# Initialize KFold cross-validator
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
+
+# Initialize lists to store results
+top_three_roc_aucs = []
+all_features_roc_aucs = []
+
+
+# Function to get the preprocessor
+def get_preprocessor(X):
+    numeric_cols = X.select_dtypes(include=['float64', 'int64']).columns
+    categorical_cols = X.select_dtypes(include=['object', 'category']).columns
+
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())
+    ])
+
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='most_frequent')),
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+    ])
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_cols),
+            ('cat', categorical_transformer, categorical_cols)
+        ]
+    )
+    return preprocessor
+
+
+# Perform cross-validation for both feature sets
+for fold, (train_idx, test_idx) in enumerate(kf.split(X_all), start=1):
+    print(f"\n--- Fold {fold} ---")
+
+    # Train-test split for top three features
+    X_train_top, X_test_top = X_top_three.iloc[train_idx], X_top_three.iloc[test_idx]
+    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+
+    # Train-test split for all features
+    X_train_all, X_test_all = X_all.iloc[train_idx], X_all.iloc[test_idx]
+
+    # Define pipelines
+    preprocessor_top = get_preprocessor(X_train_top)
+    preprocessor_all = get_preprocessor(X_train_all)
+
+    pipeline_top = Pipeline(steps=[
+        ('preprocessor', preprocessor_top),
+        ('classifier', LogisticRegression(max_iter=1000))
+    ])
+    pipeline_all = Pipeline(steps=[
+        ('preprocessor', preprocessor_all),
+        ('classifier', LogisticRegression(max_iter=1000))
+    ])
+
+    # Train models
+    pipeline_top.fit(X_train_top, y_train)
+    pipeline_all.fit(X_train_all, y_train)
+
+    # Predict probabilities
+    y_pred_proba_top = pipeline_top.predict_proba(X_test_top)[:, 1]
+    y_pred_proba_all = pipeline_all.predict_proba(X_test_all)[:, 1]
+
+    # Calculate ROC-AUC
+    roc_auc_top = roc_auc_score(y_test, y_pred_proba_top)
+    roc_auc_all = roc_auc_score(y_test, y_pred_proba_all)
+
+    # Append scores
+    top_three_roc_aucs.append(roc_auc_top)
+    all_features_roc_aucs.append(roc_auc_all)
+
+    print(f"Fold {fold} ROC-AUC (Top Three): {roc_auc_top:.4f}")
+    print(f"Fold {fold} ROC-AUC (All Features): {roc_auc_all:.4f}")
+
+# Print average ROC-AUC scores
+print("\n--- Cross-Validation Results ---")
+print(f"Average ROC-AUC (Top Three Features): {np.mean(top_three_roc_aucs):.4f}")
+print(f"Average ROC-AUC (All Features): {np.mean(all_features_roc_aucs):.4f}")
